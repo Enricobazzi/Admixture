@@ -1,0 +1,179 @@
+---
+title: "Admixture"
+author: "Enrico"
+date: "28 September 2018"
+output: html_document
+---
+
+# 0. Path Definition
+
+Define the paths to different locations for easier calling during script
+
+```{r Define paths, eval=FALSE, engine='bash'}
+
+ssh -X ebazzicalupo@genomics-b.ebd.csic.es # these analyses will be conducted in server B because the annotated VCF file is located there
+
+Admx_PATH=/home/ebazzicalupo/Admixture # path to the project directory
+Data_PATH=/home/ebazzicalupo/Data # path to data directory
+ShapeIt=/home/ebazzicalupo/Admixture/ShapeIt/shapeit # path to ShapeIt software
+Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23 # path to scaffold length file
+SexChr_PATH=/home/GRUPOS/grupolince/sexual_chr # path to directory with lists of scaffolds with XY chromosomes represented
+BCF=/opt/bcftools-1.6/bcftools # path to BCFtools software
+REF=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/lp23.fa #path to reference genome
+GATK=/opt/GATK-3.7/GenomeAnalysisTK.jar #GATK software path
+
+```
+
+# 0. Introgression Analysis with PCAdmix
+
+# 1. Preparing all the data
+
+## Selection of scaffolds to include in the analysis - REMEMBER to remove XY
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+## PCAdmix runs on single chromosomes. Having scaffolds of various length, we decided to include only the bigger scaffolds with enough information to be relevant in the analysis. We decided on 1Mbp as the lower limit for the scaffold length. We decided not to include scaffolds that might contain parts of the sexual chromosomes, which might interefere with the analysis. For this reason we removed all of the scaffolds which are annotated for any part of their length to sexual chromosomes.
+
+# check which ones have more than 1Mbp
+Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23
+sort -nk2,2 $Lenght_PATH | tail -673 | sort -k1 > $Admx_PATH/lp23_scaffolds_longerthan1Mbp  # 673 have more than 1Mbp
+
+# no XY chromosome
+cut -f1 $SexChr_PATH/females_males_normalized_ratio.coverage.contig.filteredX.percontig.Xchr-above30.0based.bed | sort -u > $Admx_PATH/lp23_scaffolds_Xchromosome
+
+cut -f1 $SexChr_PATH/females_males_normalized_ratio.coverage.contig.filteredY.lax.percontig.Ychr-above30.0based.bed | sort -u > $Admx_PATH/lp23_scaffolds_Ychromosome
+
+cat $Admx_PATH/lp23_scaffolds_Xchromosome $Admx_PATH/lp23_scaffolds_Ychromosome | sort -u > $Admx_PATH/lp23_scaffolds_sexchromosome
+
+# remove sexchromosome scaffolds from list of scaffolds longer than 1Mbp
+grep -v -f $Admx_PATH/lp23_scaffolds_sexchromosome $Admx_PATH/lp23_scaffolds_longerthan1Mbp > $Admx_PATH/lp23_scaffolds_tobephased
+
+```
+
+## Get Hybrid individual (pv = pais vasco) and its closest population's (cr = ??) VCF to phase
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+## The final filtered VCF file of Lynx lynx (c_ll_perspecies.trimmed_filtered2.lr_ann.vcf) was copied from Dani's database (/VCFs_Dani/annotation/) to the data folder.
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/ll_perspecies.trimmed_filtered2.lr_ann.vcf $Data_PATH
+
+## GATK to separate pv and cr individuals
+
+cd $Admx_PATH
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/ll_perspecies.trimmed_filtered2.lr_ann.vcf | grep 'pv\|cr' > pop_list_to_remove.txt
+cat pop_list_to_remove.txt
+
+# GATK
+screen -S GATKpartition
+script GATKpartition.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/ll_perspecies.trimmed_filtered2.lr_ann.vcf \
+    -o $Data_PATH/ll_pv.cr_perpop_filtered2_with1.lr_ann.vcf \
+    -env \
+    --sample_file pop_list_to_remove.txt
+
+rm pop_list_to_remove.txt
+
+```
+
+#2. Phasing
+
+## trials
+```{r Phasing, eval=FALSE, engine='bash'}
+
+## The final filtered VCF file of the doñana population (c_lp_do_perpop_with1.lr_ann.vcf) was copied from Dani's database (/VCFs_Dani/annotation/c_lp_do_perpop folder) to the project folder.
+
+cd $Admx_PATH
+
+# create trial file
+grep "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf > $Admx_PATH/Phasing/trial.vcf && grep "lp23.s00001" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf >> $Admx_PATH/Phasing/trial.vcf
+
+$ShapeIt -V trial.vcf \
+        --window 0.5 \
+        --output-graph trial.graph \
+        --force \
+        --states 200
+        
+$ShapeIt -convert \
+        --input-graph trial.graph \
+        --output-max trial.phased.haps trial.phased.sample
+        
+$ShapeIt -convert \
+        --input-haps trial.phased \
+        --output-vcf trial.phased.vcf
+
+# count number of scaffolds
+grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | cut -f1 | sort -u | wc -l
+grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | cut -f1 | sort -u | head -1
+
+# count number of SNPs in scaffold
+awk '$1 == "lp23.s41442" { count++ } END { print count }' $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf
+```
+
+## loop trial - explanation in trial
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+# for doñana only${scaffold}
+
+cd $Admx_PATH/Phasing/
+
+all_scaffolds=$(grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | cut -f1 | sort -u)
+for scaffold in $all_scaffolds
+  do
+  if [ $(grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | grep "${scaffold}" | wc -l) -ge 12 ] ;
+  then
+    echo "Starting Phasing of scaffold ${scaffold}"
+    
+    mkdir $Admx_PATH/Phasing/${scaffold}_Phase
+    
+    rm $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf
+    
+    grep "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf > $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf && grep "${scaffold}" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf >> $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf
+    
+    $ShapeIt -V $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf \
+        --window 0.5 \
+        --output-graph $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.graph \
+         --force \
+        --states 200
+        
+    $ShapeIt -convert \
+        --input-graph $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.graph \
+        --output-max $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.phased
+
+    $ShapeIt -convert \
+        --input-haps $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.phased \
+        --output-vcf $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.phased.vcf
+  fi
+done
+
+## REMOVE RESULTS OF 1 SNP (Because previous code was run wrong -> no if statement)
+
+all_scaffolds=$(grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | cut -f1 | sort -u)
+for scaffold in $all_scaffolds
+  do
+  if [ $(grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | grep "${scaffold}" | wc -l) -eq 1 ] ;
+    then
+    rm -r $Admx_PATH/Phasing/${scaffold}_Phase
+  fi
+done
+
+## CONCATENATE ALL PHASED VCFs into one file
+cd $Admx_PATH/Phasing/
+
+phased_scaffolds=$(ll -htr | grep -o "lp23.*_Phase" | sed 's/_Phase//g')
+rm c_lp_do_perpop_phased.vcf
+grep "#" $Admx_PATH/Phasing/lp23.s00001_Phase/lp23.s00001.phased.vcf > $Admx_PATH/Phasing/c_lp_do_perpop_phased.vcf
+
+for scaffold in $phased_scaffolds
+  do ....
+
+```
+
+
+
