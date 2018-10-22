@@ -30,9 +30,9 @@ GATK=/opt/GATK-3.7/GenomeAnalysisTK.jar #GATK software path
 
 ## Selection of scaffolds to include in the analysis - REMEMBER to remove XY
 
-```{r Phasing, eval=FALSE, engine='bash'}
+PCAdmix runs on single chromosomes. Having scaffolds of various length, we decided to include only the bigger scaffolds with enough information to be relevant in the analysis. We decided on 1Mbp as the lower limit for the scaffold length. We decided not to include scaffolds that might contain parts of the sexual chromosomes, which might interefere with the analysis. For this reason we removed all of the scaffolds which are annotated for any part of their length to sexual chromosomes.
 
-## PCAdmix runs on single chromosomes. Having scaffolds of various length, we decided to include only the bigger scaffolds with enough information to be relevant in the analysis. We decided on 1Mbp as the lower limit for the scaffold length. We decided not to include scaffolds that might contain parts of the sexual chromosomes, which might interefere with the analysis. For this reason we removed all of the scaffolds which are annotated for any part of their length to sexual chromosomes.
+```{r Preparing all the data, eval=FALSE, engine='bash'}
 
 # check which ones have more than 1Mbp
 Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23
@@ -46,44 +46,218 @@ cut -f1 $SexChr_PATH/females_males_normalized_ratio.coverage.contig.filteredY.la
 cat $Admx_PATH/lp23_scaffolds_Xchromosome $Admx_PATH/lp23_scaffolds_Ychromosome | sort -u > $Admx_PATH/lp23_scaffolds_sexchromosome
 
 # remove sexchromosome scaffolds from list of scaffolds longer than 1Mbp
-grep -v -f $Admx_PATH/lp23_scaffolds_sexchromosome $Admx_PATH/lp23_scaffolds_longerthan1Mbp > $Admx_PATH/lp23_scaffolds_tobephased
+grep -v -f $Admx_PATH/lp23_scaffolds_sexchromosome $Admx_PATH/lp23_scaffolds_longerthan1Mbp | cut -d ' ' -f1 > $Admx_PATH/lp23_scaffolds_tobephased
 
 ```
 
-## Get Hybrid individual (pv = pais vasco) and its closest population's (cr = ??) VCF to phase
+## Get VCF containing all common positions between Lynx lynx and Lynx pardinus (to keep all of the available information) and filter for coverage and missingness
 
-```{r Phasing, eval=FALSE, engine='bash'}
+We start with two VCF created by Dani, which are separated by species, but all of the positions which are fixed for the ancestral allel in one species and not in the other are not filtered out yet (Dani filters these positions for his analyses -> he tags it as "trimmed" in the name). We will apply the same coverage and missingness filters Dani applies to both VCFs, to filter out unwanted positions. To reduce computational times we filter to only keep the scaffolds we are interested in (see step above). We will divide these by the populations we are interested in (vl=vladivostok, pv=pais vasco and cr=carpathians from Lynx lynx; sm=sierra morena from Lynx pardinus). Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
 
-## The final filtered VCF file of Lynx lynx (c_ll_perspecies.trimmed_filtered2.lr_ann.vcf) was copied from Dani's database (/VCFs_Dani/annotation/) to the data folder.
-scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/ll_perspecies.trimmed_filtered2.lr_ann.vcf $Data_PATH
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+# Copy the untrimmed VCF files of Lynx lynx (ll_perspecies.lr_ann.vcf) and of Lynx pardinus (lp_perspecies.lr_ann.vcf) from Dani's database (/home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/) to the data folder.
+
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/ll_perspecies.lr_ann.vcf $Data_PATH
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/lp_perspecies.lr_ann.vcf $Data_PATH
+
+grep -v '#' $Data_PATH/ll_perspecies.lr_ann.vcf | wc -l #5063416
+grep -v '#' $Data_PATH/lp_perspecies.lr_ann.vcf | wc -l #5063416
+
+# Copy the depth calculations from Dani's database
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/c_lp_do-c_lp_sm_n031_mean_sd_depthGlobal_lynx_per_pop_mean_folds_0.95.csv $Data_PATH
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/c_ll_no-c_ll_ba-h_ll_ba-c_ll_cr-c_ll_po-c_ll_la-c_ll_ki-c_ll_ur-c_ll_tu-c_ll_to-c_ll_ka-c_ll_og-c_ll_ya-c_ll_vl_n080_mean_sd_depthGlobal_lynx_per_pop_mean_folds_0.95.csv $Data_PATH
+
+##Apply low and high DP and 0.325 missingness filters.
+#First, for each species exclude those positions that have more than 32.5% missing genotypes (i.e. missing at least in all individuals within the 5x dataset, or within the smaller 25x dataset), as well as those that have lower (higher) depth than the minimum (maximum) within 0.95 of the distribution, as calculated above:
+
+cd $Admx_PATH
+screen -S perspeciesfilter.log
+script perspeciesfilter.log
+
+cd $Data_PATH
+declare SPECIES=$(ls *_perspecies.lr_ann.vcf | cut -c1-2 | uniq)
+for i in ${SPECIES[@]}
+  do
+  echo "${i}"
+  MIN_DP=$(cat $Data_PATH/c_"${i}"*.csv | awk '{print $9}') #Obtained by Dani
+  MAX_DP=$(cat $Data_PATH/c_"${i}"*.csv | awk '{print $8}') #Obtained by Dani
+  echo $MIN_DP
+  echo $MAX_DP
+  $BCF filter -e "DP < ${MIN_DP} || DP > ${MAX_DP} || F_MISSING > 0.325" -Ov -o $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf $Data_PATH/"${i}"_perspecies.lr_ann.vcf
+done
+  
+grep -v '#' $Data_PATH/lp_perspecies_filtered2.lr_ann.vcf | wc -l #4878018
+grep -v '#' $Data_PATH/ll_perspecies_filtered2.lr_ann.vcf | wc -l #5010540
+
+```
+
+## Filter to be left only with "useful" scaffolds
+
+Filter the VCFs to include only the previously selected scaffolds (longer than 1Mbp and not including X or Y annotations)
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+cd $Data_PATH
+declare SPECIES=$(ls *_perspecies.lr_ann.vcf | cut -c1-2 | uniq)
+for i in ${SPECIES[@]}
+  do
+  grep '#' $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf > "${i}"_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf && grep -v '#' $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf | grep -f $Admx_PATH/lp23_scaffolds_tobephased >> "${i}"_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf
+done
+
+grep -v '#' $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
+grep -v '#' $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
+
+
+```
+
+We will divide these VCFs by the populations we are interested in (vl=vladivostok, pv=pais vasco and cr=carpathians from Lynx lynx; sm=sierra morena from Lynx pardinus). Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
+
+## Get Hybrid individual (pv = pais vasco) and its closest population's (cr = carpathians) VCF to phase
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
 
 ## GATK to separate pv and cr individuals
 
 cd $Admx_PATH
+rm pv.cr_list_to_remove.txt
 
 # define which individuals to extract
-$BCF query -l $Data_PATH/ll_perspecies.trimmed_filtered2.lr_ann.vcf | grep 'pv\|cr' > pop_list_to_remove.txt
-cat pop_list_to_remove.txt
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'pv\|cr' > $Admx_PATH/pv.cr_list_to_remove.txt
+cat $Admx_PATH/pv.cr_list_to_remove.txt
 
 # GATK
-screen -S GATKpartition
-script GATKpartition.log
+screen -S GATKpartitionPV.log
+script GATKpartitionPV.log
 
 java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
     -T SelectVariants \
     -R $REF \
-    -V $Data_PATH/ll_perspecies.trimmed_filtered2.lr_ann.vcf \
-    -o $Data_PATH/ll_pv.cr_perpop_filtered2_with1.lr_ann.vcf \
-    -env \
-    --sample_file pop_list_to_remove.txt
+    -V $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/pv.cr_list_to_remove.txt
 
-rm pop_list_to_remove.txt
+rm $Admx_PATH/pv.cr_list_to_remove.txt
+
+grep -v "#" $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
 
 ```
 
-#2. Phasing
+## Get Vladivostok VCF to phase - (not already generated by Dani)
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+## GATK to separate vl individuals from lynx lynx perspecies vcf
+
+cd $Admx_PATH
+rm vl_list_to_remove.txt
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'vl' > $Admx_PATH/vl_list_to_remove.txt
+cat $Admx_PATH/vl_list_to_remove.txt
+
+# GATK
+screen -S GATKpartitionVL.log
+script GATKpartitionVL.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/vl_list_to_remove.txt
+
+rm $Admx_PATH/vl_list_to_remove.txt
+
+grep -v "#" $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
+
+```
+
+## Get Sierra Morena VCF to phase
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+## GATK to separate sm individuals from lynx lynx perspecies vcf
+
+cd $Admx_PATH
+rm sm_list_to_remove.txt
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'sm' > $Admx_PATH/sm_list_to_remove.txt
+cat $Admx_PATH/sm_list_to_remove.txt
+
+# GATK
+screen -S GATKpartitionSM.log
+script GATKpartitionSM.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/sm_list_to_remove.txt
+
+rm $Admx_PATH/sm_list_to_remove.txt
+
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
+
+
+```
+
+## Intersect the three VCFs
+
+To have each VCF with only the positions which are common for the three. Both BCFtools and BEDtools have been tried. Since same species have same positions we can simply intersect with BEDtools (easier) the files 2 by 2 comparing sm with one of the two ll populations and the two ll populations with sm.
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+cd $Data_PATH
+# index bgziped VCFs
+$BCF index lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+$BCF index ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+$BCF index ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+## intersect with BCFtools results in separate folder
+$BCF isec -p $Data_PATH/intersect -n=3 lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+#This file was produced by vcfisec.
+#The command line was:   bcftools isec  -p /home/ebazzicalupo/Data/intersect -n=3 lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+#Using the following file names:
+# /home/ebazzicalupo/Data/intersect/0000.vcf      for stripped    lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+# /home/ebazzicalupo/Data/intersect/0001.vcf      for stripped    ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+# /home/ebazzicalupo/Data/intersect/0002.vcf      for stripped    ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+# move results to Datapath
+cd $Data_PATH/intersect
+mv 0000.vcf $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+mv 0001.vcf $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+mv 0002.vcf $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+
+# check number of SNPs
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+
+## Intersect with BEDtools - Used BEDtools in the end
+bedtools intersect -header -a $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# vl population
+bedtools intersect -header -a $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# pv population
+bedtools intersect -header -a $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# check number of SNPs
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+
+```
+
+#2. PHASING
 
 ## trials
+
 ```{r Phasing, eval=FALSE, engine='bash'}
 
 ## The final filtered VCF file of the doñana population (c_lp_do_perpop_with1.lr_ann.vcf) was copied from Dani's database (/VCFs_Dani/annotation/c_lp_do_perpop folder) to the project folder.
@@ -91,7 +265,7 @@ rm pop_list_to_remove.txt
 cd $Admx_PATH
 
 # create trial file
-grep "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf > $Admx_PATH/Phasing/trial.vcf && grep "lp23.s00001" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf >> $Admx_PATH/Phasing/trial.vcf
+grep "#" $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf > $Admx_PATH/Phasing/trial.vcf && grep -v "#" $Data_PATH/ll_vl_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | grep "lp23.s00001" >> $Admx_PATH/Phasing/trial.vcf
 
 $ShapeIt -V trial.vcf \
         --window 0.5 \
@@ -113,6 +287,7 @@ grep -v "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf | cut -f1 | sort -u | hea
 
 # count number of SNPs in scaffold
 awk '$1 == "lp23.s41442" { count++ } END { print count }' $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf
+
 ```
 
 ## loop trial - explanation in trial
@@ -133,8 +308,9 @@ for scaffold in $all_scaffolds
     mkdir $Admx_PATH/Phasing/${scaffold}_Phase
     
     rm $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf
-    
-    grep "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf > $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf && grep "${scaffold}" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf >> $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf
+   
+    ##ERROR grep -v "#" should be done before grepping scaffold
+    grep "#" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf > $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf && grep "${scaffold}" $Data_PATH/c_lp_do_perpop_with1.lr_ann.vcf >> $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf 
     
     $ShapeIt -V $Admx_PATH/Phasing/${scaffold}_Phase/${scaffold}.vcf \
         --window 0.5 \
@@ -175,5 +351,48 @@ for scaffold in $phased_scaffolds
 
 ```
 
+## Loop for sm (sierra morena), vl (vladivostok), and pv+cr (pais vasco + carpathians) - explanation in trial
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+mkdir Phasing
+
+screen -S PerPOPphasing.log
+script PerPOPphasing.log
+
+cd $Data_PATH/
+declare POP=$(ls *_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | cut -d'_' -f1,2 | uniq)
+echo $POP
+cd $Admx_PATH/Phasing
+
+for pop in $POP
+  do
+  echo "Starting Phasing of population ${pop}"
+  scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased)
+  for scaffold in $scaffolds
+    do
+    echo "Starting Phasing of scaffold ${scaffold} in population ${pop}"
+    
+    mkdir $Admx_PATH/Phasing/${pop}_${scaffold}_Phase
+    
+    grep "#" $Data_PATH/${pop}_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf > $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.vcf && grep -v "#" $Data_PATH/${pop}_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | grep "${scaffold}" >> $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.vcf
+    
+    $ShapeIt -V $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.vcf \
+        --window 0.5 \
+        --output-graph $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.graph \
+        --force \
+        --states 500
+        
+    $ShapeIt -convert \
+        --input-graph $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.graph \
+        --output-max $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased
+
+    $ShapeIt -convert \
+        --input-haps $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased \
+        --output-vcf $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased.vcf
+  done
+done
 
 
+
+```
