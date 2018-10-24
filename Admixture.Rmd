@@ -19,8 +19,10 @@ ShapeIt=/home/ebazzicalupo/Admixture/ShapeIt/shapeit # path to ShapeIt software
 Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23 # path to scaffold length file
 SexChr_PATH=/home/GRUPOS/grupolince/sexual_chr # path to directory with lists of scaffolds with XY chromosomes represented
 BCF=/opt/bcftools-1.6/bcftools # path to BCFtools software
-REF=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/lp23.fa #path to reference genome
-GATK=/opt/GATK-3.7/GenomeAnalysisTK.jar #GATK software path
+REF=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/lp23.fa # path to reference genome
+GATK=/opt/GATK-3.7/GenomeAnalysisTK.jar # GATK software path
+VCF2BEA=/home/ebazzicalupo/Admixture/VCF2Beagle/vcf2beagle.jar # vcf2beagle software path
+PCAdmix=/home/ebazzicalupo/Admixture/PCAdmix/PCAdmix3_linux # PCAdmix software path
 
 ```
 
@@ -256,7 +258,7 @@ grep -v "#" $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr
 
 ```
 
-#2. PHASING
+# 2. PHASING
 
 ## trials
 
@@ -356,6 +358,9 @@ for scaffold in $phased_scaffolds
 ## Loop for sm (sierra morena), vl (vladivostok), and pv+cr (pais vasco + carpathians) - explanation in trial
 
 ```{r Phasing, eval=FALSE, engine='bash'}
+
+# As Server B was full all the data was copied to server A and this loop was run there and everything from here was run on server A - the whole analysis took 13 hours
+
 cd $Admx_PATH
 mkdir Phasing
 
@@ -395,6 +400,135 @@ for pop in $POP
   done
 done
 
+## There was a problem with phasing of ll_west_s36513 so I tried phasing individually - STILL DIDN'T WORK
+## error message : shapeit: src/modes/phaser/phaser_algorithm.cpp:150: void phaser::phaseSegment(int): Assertion `conditional_index[segment].size() >= 2' failed. Abortado
+$ShapeIt -V $Admx_PATH/Phasing/ll_west_lp23.s36513_Phase/ll_west_lp23.s36513.vcf \
+        --window 0.5 \
+        --output-graph $Admx_PATH/Phasing/ll_west_lp23.s36513_Phase/ll_west_lp23.s36513.graph \
+        --force \
+        --thread 1 \
+        --states 500
+        
+
+## Remove s36513 and create new scaffolds file without it
+
+cd $Data_PATH/
+declare POP=$(ls *_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | cut -d'_' -f1,2 | uniq)
+echo $POP
+cd $Admx_PATH/Phasing/
+for pop in $POP
+  do
+  echo "Removing lp23.s36513 from ${pop}"
+  rm -r $Admx_PATH/Phasing/${pop}_lp23.s36513_Phase
+  echo " DONE "
+done
+
+grep -v "lp23.s36513" $Admx_PATH/lp23_scaffolds_tobephased > $Admx_PATH/lp23_scaffolds_tobephased_noerror
+
+```
+
+## Separate pv individual from west population's phased VCFs
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+## try with one
+bgzip $Admx_PATH/Phasing/ll_west_lp23.s00001_Phase/ll_west_lp23.s00001.phased.vcf
+
+tabix -p vcf $Admx_PATH/Phasing/ll_west_lp23.s00001_Phase/ll_west_lp23.s00001.phased.vcf.gz
+
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'pv' > $Admx_PATH/pv_list_to_remove.txt
+cat $Admx_PATH/pv_list_to_remove.txt
+
+$BCF view -Ov -S $Admx_PATH/pv_list_to_remove.txt $Admx_PATH/Phasing/ll_west_lp23.s00001_Phase/ll_west_lp23.s00001.phased.vcf.gz > $Admx_PATH/Phasing/ll_west_lp23.s00001_Phase/ll_pv_lp23.s00001.phased.vcf
+
+## loop for all
+
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'pv' > $Admx_PATH/pv_list_to_remove.txt
+cat $Admx_PATH/pv_list_to_remove.txt
+
+cd $Admx_PATH
+screen -S PVpop.log
+script PVpop.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo ${scaffold}
+    
+    bgzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf
+    tabix -p vcf $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+
+    rm -r $Admx_PATH/Phasing/ll_pv_${scaffold}_Phase
+    mkdir $Admx_PATH/Phasing/ll_pv_${scaffold}_Phase
+    
+    $BCF view -Ov -S $Admx_PATH/pv_list_to_remove.txt $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz > $Admx_PATH/Phasing/ll_pv_${scaffold}_Phase/ll_pv_${scaffold}.phased.vcf
+    gunzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    echo " DONE "
+
+done
+
+```
+
+## Beagle format conversion for PCAdmix
+
+```{r Phasing, eval=FALSE, engine='bash'}
+
+# the program vcf2beagle.jar was copied in Admixture/VCF2Beagle folder from my laptop's Desktop
+scp ~/Desktop/vcf2beagle.jar ebazzicalupo@genomics-a.ebd.csic.es:/home/ebazzicalupo/Admixture/VCF2Beagle
+
+# try for one
+
+cat $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.vcf  | java -jar $VCF2BEA N $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased
+
+# loop for all
+screen -S vcf2beagle.log
+script vcf2beagle.log
+
+cd $Admx_PATH/Phasing
+declare POP=$(ls *_Phase | cut -d '_' -f1,2 | sort -u)
+echo $POP
+
+for pop in $POP
+  do
+  scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+  for scaffold in $scaffolds
+    do
+    echo  " converting to beagle ${scaffold} in ${pop} "
+    cat $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased.vcf | java -jar $VCF2BEA N $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased
+    gunzip $Admx_PATH/Phasing/${pop}_${scaffold}_Phase/${pop}_${scaffold}.phased.bgl.gz
+    echo " DONE "
+  done
+done
+    
+```
+
+# 3. PCAdmix
+
+```{r PCAdmix, eval=FALSE, engine='bash'}
+
+# try with one scaffold
+mkdir $Admx_PATH/PCAdmix_results/
+
+$PCAdmix -anc $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.bgl $Admx_PATH/Phasing/lp_sm_lp23.s00001_Phase/lp_sm_lp23.s00001.phased.bgl -adm $Admx_PATH/Phasing/ll_pv_lp23.s00001_Phase/ll_pv_lp23.s00001.phased.bgl -o $Admx_PATH/PCAdmix_results/pcadmix_lp23.s00001 -lab L.pardinus L.lynx Admixed -wMb 0.1
+
+# loop for all scaffolds
+# WITHOUT PUTTING A MAP IT WILL USE DEFAULT WINDOW SIZE OF 20 SNPs (-wMb 0.1 is useless without a map)
+
+screen -S PCAdmix.log
+script PCAdmix.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    mkdir $Admx_PATH/PCAdmix_results/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_pv_${scaffold}_Phase/ll_pv_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_results/PCAdmix_${scaffold}/pcadmix_${scaffold} -lab LYNX PARDINUS Admixed -wMb 0.1
+    
+    echo " DONE "
+done
 
 
 ```
+
