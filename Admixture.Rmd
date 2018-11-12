@@ -36,6 +36,7 @@ PCAdmix runs on single chromosomes. Having scaffolds of various length, we decid
 
 ```{r Preparing all the data, eval=FALSE, engine='bash'}
 
+
 # check which ones have more than 1Mbp
 Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23
 sort -nk2,2 $Lenght_PATH | tail -673 | sort -k1 > $Admx_PATH/lp23_scaffolds_longerthan1Mbp  # 673 have more than 1Mbp
@@ -109,7 +110,6 @@ done
 
 grep -v '#' $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
 grep -v '#' $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
-
 
 ```
 
@@ -203,7 +203,6 @@ java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -X
 rm $Admx_PATH/sm_list_to_remove.txt
 
 grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
-
 
 ```
 
@@ -529,6 +528,313 @@ for scaffold in $scaffolds
     echo " DONE "
 done
 
+cat $Admx_PATH/PCAdmix_results/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_results/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_results/PCAdmix_lp23.s*/*vit.txt > ~/home/allscaffolds.txt
+
+grep "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1" ~/home/allscaffolds.txt | wc -l
 
 ```
 
+## Version with physical distance map
+
+```{r PCAdmix, eval=FALSE, engine='bash'}
+
+## We first need to creat a physical map in PLINK format (chromosome number, SNP ID, genetic position [optional], phsyical position)
+
+## try for one scaffold
+
+# Generate MAP
+
+paste -d"\t" <(grep -v "#" $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.vcf | cut -f1) <(grep -v "id" $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.bgl | cut -d' ' -f2) <(grep -v "#" $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.vcf | cut -f2) > $Admx_PATH/maptry.map
+
+while read a b c
+do
+echo -e $a '\t' $b '\t' 0 '\t' $c
+done <$Admx_PATH/maptry.map > tmp && mv tmp $Admx_PATH/maptry.map
+
+# run PCAdmix
+
+$PCAdmix -anc $Admx_PATH/Phasing/ll_east_lp23.s00001_Phase/ll_east_lp23.s00001.phased.bgl $Admx_PATH/Phasing/lp_sm_lp23.s00001_Phase/lp_sm_lp23.s00001.phased.bgl -adm $Admx_PATH/Phasing/ll_pv_lp23.s00001_Phase/ll_pv_lp23.s00001.phased.bgl -map $Admx_PATH/maptry_with0.map -lab L.pardinus L.lynx Admixed -o $Admx_PATH/pcadmix_withmap_lp23.s00001 -wMb 0.1
+
+## LOOP for all scaffolds
+
+mkdir $Admx_PATH/ScaffoldMaps
+mkdir $Admx_PATH/PCAdmix_hundredKb/
+
+screen -S PCAdmix_hundredKb.log
+script PCAdmix_hundredKb.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    mkdir $Admx_PATH/PCAdmix_hundredKb/PCAdmix_${scaffold}
+    
+    echo " creating ${scaffold} map "
+    
+    paste -d"\t" <(grep -v "#" $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.vcf | cut -f1) <(grep -v "id" $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl | cut -d' ' -f2) <(grep -v "#" $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.vcf | cut -f2) > $Admx_PATH/ScaffoldMaps/${scaffold}.map
+    while read a b c
+      do
+      echo -e $a '\t' $b '\t' 0 '\t' $c
+    done <$Admx_PATH/ScaffoldMaps/${scaffold}.map > tmp && mv tmp $Admx_PATH/ScaffoldMaps/${scaffold}.map
+    
+    echo " running PCAdmix "
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_pv_${scaffold}_Phase/ll_pv_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_hundredKb/PCAdmix_${scaffold}/pcadmix_${scaffold} -map $Admx_PATH/ScaffoldMaps/${scaffold}.map -lab LYNX PARDINUS Admixed -wMb 0.1
+    
+    echo " DONE "
+done
+
+cat $Admx_PATH/PCAdmix_hundredKb/PCAdmix_lp23.s*/*vit.txt | less -S
+# save in new file on laptop
+cat ~/home/PCAdmix_hundredKb/PCAdmix_lp23.s*/*vit.txt > ~/home/hundredKb.txt
+cat $Admx_PATH/PCAdmix_hundredKb/PCAdmix_lp23.s*/*ia.txt | less -S
+
+
+```
+
+## Version with Carpathians population as Admixed (for results comparison)
+
+```{r PCAdmix, eval=FALSE, engine='bash'}
+
+# extract carpathians (cr) population vcf
+
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'cr' > $Admx_PATH/cr_list_to_remove.txt
+cat $Admx_PATH/cr_list_to_remove.txt
+
+cd $Admx_PATH
+screen -S CRpop.log
+script CRpop.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo ${scaffold}
+    rm $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz.tbi
+    bgzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf
+    tabix -p vcf $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    rm -r $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase
+    mkdir $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase
+    
+    $BCF view -Ov -S $Admx_PATH/cr_list_to_remove.txt $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz > $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase/ll_cr_${scaffold}.phased.vcf
+    gunzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    echo " DONE "
+
+done
+
+## convert to beagle
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo  " converting to beagle ${scaffold} in cr "
+    cat $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase/ll_cr_${scaffold}.phased.vcf | java -jar $VCF2BEA N $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase/ll_cr_${scaffold}.phased
+    gunzip $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase/ll_cr_${scaffold}.phased.bgl.gz
+    echo " DONE "
+done
+
+## run 20SNPs window PCAdmix
+
+screen -S CR_PCAdmix.log
+script CR_PCAdmix.log
+mkdir $Admx_PATH/PCAdmix_Carpathians
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    mkdir $Admx_PATH/PCAdmix_Carpathians/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_cr_${scaffold}_Phase/ll_cr_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_Carpathians/PCAdmix_${scaffold}/pcadmix_${scaffold} -lab LYNX PARDINUS Admixed -w 20
+    
+    echo " DONE "
+done
+
+cat $Admx_PATH/PCAdmix_Carpathians/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_Carpathians/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_Carpathians/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/home/Carpathians.txt
+
+```
+
+## Version with CR+PV as the same Admixed population
+
+```{r PCAdmix, eval=FALSE, engine='bash'}
+# extract carpathians (cr) and pv populations vcf
+
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'cr\|pv' > $Admx_PATH/pvcr_list_to_remove.txt
+cat $Admx_PATH/pvcr_list_to_remove.txt
+
+cd $Admx_PATH
+screen -S PVCRpop.log
+script PVCRpop.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo ${scaffold}
+    rm $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz.tbi
+    bgzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf
+    tabix -p vcf $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    rm -r $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase
+    mkdir $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase
+    
+    $BCF view -Ov -S $Admx_PATH/pvcr_list_to_remove.txt $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz > $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.vcf
+    gunzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    echo " DONE "
+
+done
+
+## convert to beagle
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo  " converting to beagle ${scaffold} in pvcr "
+    cat $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.vcf | java -jar $VCF2BEA N $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased
+    gunzip $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.bgl.gz
+    echo " DONE "
+done
+
+## run 50Kbp window PCAdmix
+
+screen -S PVCR_PCAdmix.log
+script PVCR_PCAdmix.log
+rm -r $Admx_PATH/PCAdmix_PVCRresults
+mkdir $Admx_PATH/PCAdmix_PVCRresults
+
+scaffolds=$(grep -v "lp23.s00036" $Admx_PATH/lp23_scaffolds_tobephased_noerror) # was stopping at s00036
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    rm -r $Admx_PATH/PCAdmix_PVCRresults/PCAdmix_${scaffold}
+    mkdir $Admx_PATH/PCAdmix_PVCRresults/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_PVCRresults/PCAdmix_${scaffold}/pcadmix_${scaffold} -map $Admx_PATH/ScaffoldMaps/${scaffold}.map -lab LYNX PARDINUS Admixed -wMb 0.05
+    
+    echo " DONE "
+done
+
+cat $Admx_PATH/PCAdmix_PVCRresults/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_PVCRresults/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_PVCRresults/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/home/PVCR.txt
+
+
+## run 50 SNPs window PCAdmix
+
+screen -S PVCR50snps_PCAdmix.log
+script PVCR50snps_PCAdmix.log
+rm -r $Admx_PATH/PCAdmix_PVCR50snpsresults
+mkdir $Admx_PATH/PCAdmix_PVCR50snpsresults
+
+scaffolds=$(grep -v "lp23.s00036" $Admx_PATH/lp23_scaffolds_tobephased_noerror) # lp23.s00036 blocking the analysis
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    rm -r $Admx_PATH/PCAdmix_PVCR50snpsresults/PCAdmix_${scaffold}
+    mkdir $Admx_PATH/PCAdmix_PVCR50snpsresults/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_PVCR50snpsresults/PCAdmix_${scaffold}/pcadmix_${scaffold} -map $Admx_PATH/ScaffoldMaps/${scaffold}.map -lab LYNX PARDINUS Admixed -w 50
+    
+    echo " DONE "
+done
+
+# MAP FILES ARE ONLY UP TO s36533!!
+
+cat $Admx_PATH/PCAdmix_PVCR50snpsresults/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_PVCR50snpsresults/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_PVCR50snpsresults/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/home/PVCR50snps.txt
+
+cat PCAdmix_lp23.s00048/pcadmix_lp23.s00048.markers.txt | cut -f1 | tail -1
+
+
+## run 20 SNPs window PCAdmix
+
+screen -S PVCR20snps_PCAdmix.log
+script PVCR20snps_PCAdmix.log
+rm -r $Admx_PATH/PCAdmix_PVCR20snpsresults
+mkdir $Admx_PATH/PCAdmix_PVCR20snpsresults
+
+scaffolds=$(grep -v "lp23.s00036" $Admx_PATH/lp23_scaffolds_tobephased_noerror) # lp23.s00036 blocking the analysis
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    rm -r $Admx_PATH/PCAdmix_PVCR20snpsresults/PCAdmix_${scaffold}
+    mkdir $Admx_PATH/PCAdmix_PVCR20snpsresults/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_pvcr_${scaffold}_Phase/ll_pvcr_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_PVCR20snpsresults/PCAdmix_${scaffold}/pcadmix_${scaffold} -map $Admx_PATH/ScaffoldMaps/${scaffold}.map -lab LYNX PARDINUS Admixed -w 20
+    
+    echo " DONE "
+done
+
+# MAP FILES ARE ONLY UP TO s36533!!
+
+cat $Admx_PATH/PCAdmix_PVCR20snpsresults/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_PVCR20snpsresults/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_PVCR20snpsresults/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/home/PVCR20snps.txt
+
+cat ~/home/PCAdmix_PVCR20snpsresults/PCAdmix_lp23.s*/*vit.txt > ~/home/PVCR20snps.txt
+
+```
+
+# 4. Tables
+
+Choosed 20SNPs window (better resolution and amount of information when compared to physical size windows). Separate populations better, as running PCAdmix with PV+CR introduced noise (most probably due to LD calculations made by the program). Table 1: Scaffold length (from first SNP in first window to last SNP in last window in markers.txt file), number of windows (not including windows smaller than 20 SNPs in markers.txt file), number of lp windows (in vit.txt), % of introgression at scaffold level (in ia.txt file), % introgression at window level (dividing totwindows by lpwindows). Window level Table 2: Scaffold?, Window number (not including windows smaller than 20 SNPs in markers.txt file), Ancestry of A allele, Ancestry of B allele , Start SNP position, End SNP position.
+
+## Table 1
+
+```{r Tables, eval=FALSE, engine='bash'}
+
+# Remove Windows of less than 20 SNPs
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | less -S
+rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | less -S # 3 because the file has space at the end of each line
+
+# Calculate scaffold length - 1st SNP in first window and last SNP in last window
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 # 6927 - scaffold START
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | tail -1 | cut -d ":" -f2 # 13182611 - scaffold END
+
+# Total number of windows
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l # 689
+
+# Number of introgressed windows (Lynx pardinus ancestry)
+rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A" | grep "1" | wc -l # 19 = number of 1 (lp) ancestries for haplotype A of h_ll_pv_0223
+rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B" | grep "1" | wc -l # 19 = number of 1 (lp) ancestries for haplotype B of h_ll_pv_0223
+
+# % of introgression at scaffold level (as calculated by the PCAdmix program)
+cat pcadmix_lp23.s00001.ia.txt | grep h_ll_pv_0223_A | cut -d " " -f3 # 0.0748933
+cat pcadmix_lp23.s00001.ia.txt | grep h_ll_pv_0223_B | cut -d " " -f3 # 0.0767638
+
+# % of introgression at window level (as calculated by dividing the number of introgressed windows by the total number of windows)
+
+
+```
+
+## Table 2
+
+```{r Tables, eval=FALSE, engine='bash'}
+
+# window number
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1
+
+# Ancestry of A allele
+rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A"
+
+# Ancestry of B allele
+rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B"
+
+# Start position
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2
+
+# End position 
+awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2
+
+```
