@@ -801,10 +801,15 @@ rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | less -S # 3 because th
 # scaffold number
 
 # Calculate scaffold length - 1st SNP in first window and last SNP in last window
-awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 # 6927 - scaffold START
-awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | tail -1 | cut -d ":" -f2 # 13182611 - scaffold END
+awk -v FS=" " 'NF>20' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 # 6927 - scaffold START
+awk -v FS=" " 'NF>20' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | tail -1 | cut -d ":" -f2 # 13182611 - scaffold END
 
-SUBTRACT?
+# LENGTH
+START=$(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 | bc) # 6927 - scaffold START
+END=$(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | tail -1 | cut -d ":" -f2 | bc) # 13182611 - scaffold END
+
+echo "$END-$START" | bc
+
 
 # Total number of windows
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l # 689
@@ -819,7 +824,14 @@ cat pcadmix_lp23.s00001.ia.txt | grep h_ll_pv_0223_B | cut -d " " -f3 # 0.076763
 
 # % of introgression at window level (as calculated by dividing the number of introgressed windows by the total number of windows)
 
-with R??
+TOTW=$(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l | bc) # 689
+
+ALPW=$(rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A" | grep "1" | wc -l | bc) # 19 = number of 1 (lp) ancestries for haplotype A of h_ll_pv_0223
+
+echo "scale=4; $ALPW/$TOTW" | bc | sed 's/^\./0./'
+
+# errors try
+
 
 ```
 
@@ -830,7 +842,7 @@ with R??
 # scaffold number
 
 # window number
-paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l))
+paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>20' pcadmix_lp23.s00001.markers.txt | wc -l))
 
 # Ancestry of A allele
 rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A"
@@ -839,15 +851,15 @@ rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | 
 rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B"
 
 # Start position
-awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2
+awk -v FS=" " 'NF>20' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2
 
 # End position 
-awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2
+awk -v FS=" " 'NF>20' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2
 
 paste <(paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l))) <(rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A") <(rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B") <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2) <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2) > table2.txt
 
 # s05219 (has 3 segments of 2 windows)
-paste <(paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | wc -l))) <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A") <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B") <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2) <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2) > table2.txt
+paste <(paste -d '.' <(awk -v FS=" " 'NF>20' pcadmix_lp23.s05219.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>20' pcadmix_lp23.s05219.markers.txt | wc -l))) <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A") <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B") <(awk -v FS=" " 'NF>20' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2) <(awk -v FS=" " 'NF>20' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2) > table2.txt
 
 ```
 
