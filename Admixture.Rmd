@@ -671,7 +671,7 @@ cat $Admx_PATH/pvcr_list_to_remove.txt
 
 cd $Admx_PATH
 screen -S PVCRpop.log
-script PVCRpop.log
+script PVCRpop.logcd
 
 scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
 for scaffold in $scaffolds
@@ -788,7 +788,7 @@ cat ~/home/PCAdmix_PVCR20snpsresults/PCAdmix_lp23.s*/*vit.txt > ~/home/PVCR20snp
 
 # 4. Tables
 
-Choosed 20SNPs window (better resolution and amount of information when compared to physical size windows). Separate populations better, as running PCAdmix with PV+CR introduced noise (most probably due to LD calculations made by the program). Table 1: Scaffold length (from first SNP in first window to last SNP in last window in markers.txt file), number of windows (not including windows smaller than 20 SNPs in markers.txt file), number of lp windows (in vit.txt), % of introgression at scaffold level (in ia.txt file), % introgression at window level (dividing totwindows by lpwindows). Window level Table 2: Scaffold?, Window number (not including windows smaller than 20 SNPs in markers.txt file), Ancestry of A allele, Ancestry of B allele , Start SNP position, End SNP position.
+Choosed 20SNPs window (better resolution and amount of information when compared to physical size windows). Separate populations better, as running PCAdmix with PV+CR introduced noise (most probably due to LD calculations made by the program). Table 1: scaffold number, Scaffold length (from first SNP in first window to last SNP in last window in markers.txt file), number of windows (not including windows smaller than 20 SNPs in markers.txt file), number of lp windows (in vit.txt), % of introgression at scaffold level (in ia.txt file), % introgression at window level (dividing totwindows by lpwindows). Window level Table 2: Scaffold?, Window number (not including windows smaller than 20 SNPs in markers.txt file), Ancestry of A allele, Ancestry of B allele , Start SNP position, End SNP position. Introgressed segments table (Table 3): scaffold number, number of consecutive windows in segment, first window first SNP (start), last window last SNP (end).
 
 ## Table 1
 
@@ -798,9 +798,13 @@ Choosed 20SNPs window (better resolution and amount of information when compared
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | less -S
 rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | less -S # 3 because the file has space at the end of each line
 
+# scaffold number
+
 # Calculate scaffold length - 1st SNP in first window and last SNP in last window
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 # 6927 - scaffold START
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | tail -1 | cut -d ":" -f2 # 13182611 - scaffold END
+
+SUBTRACT?
 
 # Total number of windows
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l # 689
@@ -815,6 +819,7 @@ cat pcadmix_lp23.s00001.ia.txt | grep h_ll_pv_0223_B | cut -d " " -f3 # 0.076763
 
 # % of introgression at window level (as calculated by dividing the number of introgressed windows by the total number of windows)
 
+with R??
 
 ```
 
@@ -822,8 +827,10 @@ cat pcadmix_lp23.s00001.ia.txt | grep h_ll_pv_0223_B | cut -d " " -f3 # 0.076763
 
 ```{r Tables, eval=FALSE, engine='bash'}
 
+# scaffold number
+
 # window number
-awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1
+paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l))
 
 # Ancestry of A allele
 rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A"
@@ -836,5 +843,49 @@ awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f
 
 # End position 
 awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2
+
+paste <(paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | wc -l))) <(rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A") <(rev pcadmix_lp23.s00001.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B") <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2) <(awk -v FS=" " 'NF>19' pcadmix_lp23.s00001.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2) > table2.txt
+
+# s05219 (has 3 segments of 2 windows)
+paste <(paste -d '.' <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f1 | grep -o "Window") <(seq -f "%03g" 1 $(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | wc -l))) <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A") <(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_B | tr ' ' '\n' | grep -v "h_ll_pv_0223_B") <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f1 | cut -d ":" -f2) <(awk -v FS=" " 'NF>19' pcadmix_lp23.s05219.markers.txt | cut -f2- | cut -d " " -f20 | cut -d ":" -f2) > table2.txt
+
+```
+
+## Table 3
+
+```{r Tables, eval=FALSE, engine='bash'}
+
+# scaffold number
+
+# first cut 1,2 -> A allele; 1,3 -> B allele
+cut -f1,2 table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > A_9
+
+cut -f1,3 table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._1 Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > B_9
+
+# NEED FILE (starts and ends) with multiple same sized segments (s05219 (has 3 segments of 2 windows)) -> all will be done with file to be sure 
+
+cut -f1,2 table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 Window...._1 Window...._1 Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > A_2
+
+cut -d ' ' -f1 A_2 > A_2_starts
+grep -f A_2_starts table2.txt | cut -f4
+
+rev A_2 | cut -d ' ' -f1 | rev > A_2_ends
+grep -f A_2_ends table2.txt | cut -f5
+
+# Add Segment length to Window file
+cat A_2 | tr ' ' '-' | awk -vFS="-" '{print NF, $0}' | tr ' ' '\t' > A_2_windows
+
+# SHOULD BE DONE AS A LOOP FOR SEGMENTS OF SIZE FROM 1 to MAX (total number of windows in that scaffold)
+
+nwin=$(rev pcadmix_lp23.s05219.vit.txt | cut -d " " -f3- | rev | grep h_ll_pv_0223_A | tr ' ' '\n' | grep -v "h_ll_pv_0223_A" | grep "1" | wc -l)
+for n in $(seq 1 $nwin)
+  do
+  var=$(yes "Window...._1" | head -$n)
+  lvar=$(echo $var)
+  cut -f1,2 table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > A_${n}
+done
+
+# paste everything - SHOULD ADD SCAFFOLD number AND ALLELE (A or B) -> awk ?
+paste A_2_windows <(grep -f A_2_starts table2.txt | cut -f4) <(grep -f A_2_ends table2.txt | cut -f5) > table3.txt
 
 ```
