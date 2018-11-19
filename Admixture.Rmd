@@ -898,6 +898,10 @@ for n in $(seq 1 $nwin)
 done
 
 # paste everything - SHOULD ADD SCAFFOLD number AND ALLELE (A or B) -> awk ?
-paste A_2_windows <(grep -f A_2_starts table2.txt | cut -f4) <(grep -f A_2_ends table2.txt | cut -f5) > table3.txt
+paste A_2_windows <(grep -f A_2_starts table2.txt | cut -f4) <(grep -f A_2_ends table2.txt | cut -f5) > A_2_table3.txt
+
+# order by columns 1, 2 and 5 the final table (scaffold, allele and start position, in order to have segments in physical order)
+
+sort -k2,2 -k1,1 -k5,5n Admixture/PCAdmix_results/h_ll_pv_0223_Table3.txt | less -S
 
 ```

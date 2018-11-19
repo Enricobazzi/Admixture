@@ -14,9 +14,10 @@ PCAdmix=/home/ebazzicalupo/Admixture/PCAdmix/PCAdmix3_linux # PCAdmix software p
 ## Table 1
 
 cd $Admx_PATH/$1
-scaffolds=$(ls | sed 's/PCAdmix_//g')
 
-rm $2_Table1.txt
+rm $2_*.txt
+
+scaffolds=$(ls | sed 's/PCAdmix_//g')
 
 echo " - Generating Table 1 for $2 in $1... - "
 
@@ -25,7 +26,7 @@ echo -e "SCAFFOLD\tSTART\tEND\tLENGTH\tTOT_WIN\tA_LP_WIN\tB_LP_WIN\tA_PCA_INTRO\
 for scaffold in $scaffolds
     do
     
-    echo " - ${scaffold} - "
+    echo -ne " - ${scaffold} - \r"
     
     SCAFFOLD=$(echo "${scaffold}")
     START=$(awk -v FS=" " 'NF>20' PCAdmix_${scaffold}/pcadmix_${scaffold}.markers.txt | cut -f2- | cut -d " " -f1 | head -1 | cut -d ":" -f2 | bc)
@@ -52,7 +53,7 @@ echo " - Generating Table 2 for $2 in $1... - "
 for scaffold in $scaffolds
     do
     
-    echo " - ${scaffold} - "
+    echo -ne " - ${scaffold} - \r"
 	
 	nscaf=$(awk -v FS=" " 'NF>20' PCAdmix_${scaffold}/pcadmix_${scaffold}.markers.txt | cut -f1 | grep -o "Window" | wc -l)
 		
@@ -66,7 +67,68 @@ cat PCAdmix_*/*_$2_Table2.txt > $Admx_PATH/$1/$2_Table2.txt
 
 echo " - Table 2 for $2 in $1 Generated! -"
 
+## Table 3
 
+echo " - Generating Table 3 for $2 in $1... - "
 
+for scaffold in $scaffolds
+    
+    do
+    	echo -ne " - Finding A allele introgressed segments in ${scaffold}... - \r"
+    	
+		awin=$(rev PCAdmix_${scaffold}/pcadmix_${scaffold}.vit.txt | cut -d " " -f3- | rev | grep $2_A | tr ' ' '\n' | grep -v "$2_A" | grep "1" | wc -l)
+				
+		for n in $(seq 1 $awin)
+		
+			do
+				var=$(yes "Window...._1" | head -$n)
+				lvar=$(echo $var)
+	  
+				cut -f2,3 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_A_${n}
 
+				cut -d ' ' -f1 PCAdmix_${scaffold}/$2_A_${n} > PCAdmix_${scaffold}/$2_A_${n}_starts
 
+				rev PCAdmix_${scaffold}/$2_A_${n} | cut -d ' ' -f1 | rev > PCAdmix_${scaffold}/$2_A_${n}_ends
+			
+				cat PCAdmix_${scaffold}/$2_A_${n} | tr ' ' '-' | awk -vFS="-" '{print NF, $0}' | tr ' ' '\t' > PCAdmix_${scaffold}/$2_A_${n}_windows
+				
+				arows=$(cat PCAdmix_${scaffold}/$2_A_${n}_windows | wc -l)
+				paste <(yes "${scaffold}" | head -$arows) <(yes "A" | head -$arows) PCAdmix_${scaffold}/$2_A_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_A_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f5) <(grep -f PCAdmix_${scaffold}/$2_A_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) > PCAdmix_${scaffold}/$2_A_${n}_Table3.txt
+
+		done
+
+		echo -ne " - Finding B allele introgressed segments in ${scaffold}... - \r"
+
+		bwin=$(rev PCAdmix_${scaffold}/pcadmix_${scaffold}.vit.txt | cut -d " " -f3- | rev | grep $2_B | tr ' ' '\n' | grep -v "$2_B" | grep "1" | wc -l)
+
+		for n in $(seq 1 $bwin)
+		
+			do
+				var=$(yes "Window...._1" | head -$n)
+				lvar=$(echo $var)
+
+				cut -f2,4 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_B_${n}
+
+				cut -d ' ' -f1 PCAdmix_${scaffold}/$2_B_${n} > PCAdmix_${scaffold}/$2_B_${n}_starts
+
+				rev PCAdmix_${scaffold}/$2_B_${n} | cut -d ' ' -f1 | rev > PCAdmix_${scaffold}/$2_B_${n}_ends
+
+				cat PCAdmix_${scaffold}/$2_B_${n} | tr ' ' '-' | awk -vFS="-" '{print NF, $0}' | tr ' ' '\t' > PCAdmix_${scaffold}/$2_B_${n}_windows
+		
+				brows=$(cat PCAdmix_${scaffold}/$2_B_${n}_windows | wc -l)
+				paste <(yes "${scaffold}" | head -$brows) <(yes "B" | head -$brows) PCAdmix_${scaffold}/$2_B_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_B_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f5) <(grep -f PCAdmix_${scaffold}/$2_B_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) > PCAdmix_${scaffold}/$2_B_${n}_Table3.txt
+
+		done
+			
+done
+
+echo " - Introgressed segments identified! - "
+echo " - Joining Table3s ... -"
+cat PCAdmix_*/$2_A_*_Table3.txt > $2_A_Table3.txt
+cat PCAdmix_*/$2_B_*_Table3.txt > $2_B_Table3.txt
+cat $2_A_Table3.txt $2_B_Table3.txt | sort -k2,2 -k1,1 -k5,5n > $Admx_PATH/$1/$2_Table3.txt
+
+echo " - Removing Intermediary files ... -"
+rm PCAdmix_*/$2_*
+
+echo " - Table 3 for $2 in $1 Generated! -"
