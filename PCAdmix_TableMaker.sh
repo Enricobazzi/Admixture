@@ -85,7 +85,7 @@ for scaffold in $scaffolds
 				var=$(yes "Window...._1" | head -$n)
 				lvar=$(echo $var)
 	  
-				cut -f2,3 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_A_${n}
+				cut -f3,4 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_A_${n}
 
 				cut -d ' ' -f1 PCAdmix_${scaffold}/$2_A_${n} > PCAdmix_${scaffold}/$2_A_${n}_starts
 
@@ -94,7 +94,7 @@ for scaffold in $scaffolds
 				cat PCAdmix_${scaffold}/$2_A_${n} | tr ' ' '-' | awk -vFS="-" '{print NF, $0}' | tr ' ' '\t' > PCAdmix_${scaffold}/$2_A_${n}_windows
 				
 				arows=$(cat PCAdmix_${scaffold}/$2_A_${n}_windows | wc -l)
-				paste <(yes "$2" | head -$arows) <(yes "${scaffold}" | head -$arows) <(yes "A" | head -$arows) PCAdmix_${scaffold}/$2_A_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_A_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f5) <(grep -f PCAdmix_${scaffold}/$2_A_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) > PCAdmix_${scaffold}/$2_A_${n}_Table3.txt
+				paste <(yes "$2" | head -$arows) <(yes "${scaffold}" | head -$arows) <(yes "A" | head -$arows) PCAdmix_${scaffold}/$2_A_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_A_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) <(grep -f PCAdmix_${scaffold}/$2_A_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f7) > PCAdmix_${scaffold}/$2_A_${n}_Table3.txt
 
 		done
 
@@ -108,7 +108,7 @@ for scaffold in $scaffolds
 				var=$(yes "Window...._1" | head -$n)
 				lvar=$(echo $var)
 
-				cut -f2,4 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_B_${n}
+				cut -f3,5 PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | tr '\t' '_' | tr '\n' ' ' | grep -o -e "Window...._0 $lvar Window...._0" | cut -d ' ' -f2- | rev | cut -d ' ' -f2- | rev | sed -e 's/_1//g' > PCAdmix_${scaffold}/$2_B_${n}
 
 				cut -d ' ' -f1 PCAdmix_${scaffold}/$2_B_${n} > PCAdmix_${scaffold}/$2_B_${n}_starts
 
@@ -117,7 +117,7 @@ for scaffold in $scaffolds
 				cat PCAdmix_${scaffold}/$2_B_${n} | tr ' ' '-' | awk -vFS="-" '{print NF, $0}' | tr ' ' '\t' > PCAdmix_${scaffold}/$2_B_${n}_windows
 		
 				brows=$(cat PCAdmix_${scaffold}/$2_B_${n}_windows | wc -l)
-				paste <(yes "$2" | head -$brows)  <(yes "${scaffold}" | head -$brows) <(yes "B" | head -$brows) PCAdmix_${scaffold}/$2_B_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_B_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f5) <(grep -f PCAdmix_${scaffold}/$2_B_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) > PCAdmix_${scaffold}/$2_B_${n}_Table3.txt
+				paste <(yes "$2" | head -$brows) <(yes "${scaffold}" | head -$brows) <(yes "B" | head -$brows) PCAdmix_${scaffold}/$2_B_${n}_windows <(grep -f PCAdmix_${scaffold}/$2_B_${n}_starts PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f6) <(grep -f PCAdmix_${scaffold}/$2_B_${n}_ends PCAdmix_${scaffold}/pcadmix_${scaffold}_$2_Table2.txt | cut -f7) > PCAdmix_${scaffold}/$2_B_${n}_Table3.txt
 
 		done
 			
@@ -127,10 +127,10 @@ echo " - Introgressed segments identified! - "
 echo " - Joining Table3s ... -"
 cat PCAdmix_*/$2_A_*_Table3.txt > $2_A_Table3.txt
 cat PCAdmix_*/$2_B_*_Table3.txt > $2_B_Table3.txt
-echo -e "Individual\tScaffold\tAllele\tWindowsNumber\tSegmentWindows\tStart\tEnd\tLength" > $Admx_PATH/$1/$2_Table3.txt
-cat $2_A_Table3.txt $2_B_Table3.txt | sort -k2,2 -k1,1 -k5,5n | awk 'BEGIN { OFS = "\t" } { $7 = $6 - $5 } 1' >> $Admx_PATH/$1/$2_Table3.txt
+echo -e "Individual\tScaffold\tAllele\tNWindows\tSegmentWindows\tStart\tEnd\tLength" > $Admx_PATH/$1/$2_Table3.txt
+cat $2_A_Table3.txt $2_B_Table3.txt | sort -k3,3 -k2,2 -k6,6n | awk 'BEGIN { OFS = "\t" } { $8 = $7 - $6 } 1' >> $Admx_PATH/$1/$2_Table3.txt
 
 echo " - Removing Intermediary files ... -"
 rm PCAdmix_*/$2_*
-rm tmp
+
 echo " - Table 3 for $2 in $1 Generated! -"
