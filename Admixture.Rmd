@@ -1045,7 +1045,8 @@ echo " - Introgressed segments identified! - "
 echo " - Joining Table3s ... -"
 cat PCAdmix_*/$2_A_*_Table3.txt > $2_A_Table3.txt
 cat PCAdmix_*/$2_B_*_Table3.txt > $2_B_Table3.txt
-cat $2_A_Table3.txt $2_B_Table3.txt | sort -k2,2 -k1,1 -k5,5n | awk 'BEGIN { OFS = "\t" } { $7 = $6 - $5 } 1' > tmp && echo -e "Individual\tScaffold\tAllele\tWindowsNumber\tSegmentWindows\tStart\tEnd\tLength" | cat - tmp > $Admx_PATH/$1/$2_Table3.txt
+echo -e "Individual\tScaffold\tAllele\tWindowsNumber\tSegmentWindows\tStart\tEnd\tLength" > $Admx_PATH/$1/$2_Table3.txt
+cat $2_A_Table3.txt $2_B_Table3.txt | sort -k2,2 -k1,1 -k5,5n | awk 'BEGIN { OFS = "\t" } { $7 = $6 - $5 } 1' >> $Admx_PATH/$1/$2_Table3.txt
 
 echo " - Removing Intermediary files ... -"
 rm PCAdmix_*/$2_*

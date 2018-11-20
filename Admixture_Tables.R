@@ -10,6 +10,12 @@ library(ggplot2)
 # h_ll_pv_0223 (PV) individual
 PV_Table3 <- read_delim("~/Documents/Admixture/h_ll_pv_0223_Table3.txt", delim = '\t', col_names = TRUE)
 CR_0205_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0205_Table3.txt", delim = '\t', col_names = TRUE)
+CR_0206_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0206_Table3.txt", delim = '\t', col_names = TRUE)
+CR_0207_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0207_Table3.txt", delim = '\t', col_names = TRUE)
+CR_0208_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0208_Table3.txt", delim = '\t', col_names = TRUE)
+CR_0209_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0209_Table3.txt", delim = '\t', col_names = TRUE)
+CR_0212_Table3 <- read_delim("~/Documents/Admixture/c_ll_cr_0212_Table3.txt", delim = '\t', col_names = TRUE)
+
 
 ## Boxplot ##
 
