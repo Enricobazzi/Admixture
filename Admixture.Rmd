@@ -2,7 +2,9 @@
 title: "Admixture"
 author: "Enrico"
 date: "28 September 2018"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 # 0. Path Definition
@@ -26,7 +28,7 @@ PCAdmix=/home/ebazzicalupo/Admixture/PCAdmix/PCAdmix3_linux # PCAdmix software p
 
 ```
 
-# 0. Introgression Analysis with PCAdmix
+# Introgression Analysis with PCAdmix
 
 # 1. Preparing all the data
 
@@ -35,7 +37,6 @@ PCAdmix=/home/ebazzicalupo/Admixture/PCAdmix/PCAdmix3_linux # PCAdmix software p
 PCAdmix runs on single chromosomes. Having scaffolds of various length, we decided to include only the bigger scaffolds with enough information to be relevant in the analysis. We decided on 1Mbp as the lower limit for the scaffold length. We decided not to include scaffolds that might contain parts of the sexual chromosomes, which might interefere with the analysis. For this reason we removed all of the scaffolds which are annotated for any part of their length to sexual chromosomes.
 
 ```{r Preparing all the data, eval=FALSE, engine='bash'}
-
 
 # check which ones have more than 1Mbp
 Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23
@@ -55,7 +56,7 @@ grep -v -f $Admx_PATH/lp23_scaffolds_sexchromosome $Admx_PATH/lp23_scaffolds_lon
 
 ## Get VCF containing all common positions between Lynx lynx and Lynx pardinus (to keep all of the available information) and filter for coverage and missingness
 
-We start with two VCF created by Dani, which are separated by species, but all of the positions which are fixed for the ancestral allel in one species and not in the other are not filtered out yet (Dani filters these positions for his analyses -> he tags it as "trimmed" in the name). We will apply the same coverage and missingness filters Dani applies to both VCFs, to filter out unwanted positions. To reduce computational times we filter to only keep the scaffolds we are interested in (see step above). We will divide these by the populations we are interested in (vl=vladivostok, pv=pais vasco and cr=carpathians from Lynx lynx; sm=sierra morena from Lynx pardinus). Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
+We start with two VCF created by Dani, which are separated by species, but all of the positions which are fixed for the ancestral allel in one species and not in the other are not filtered out yet (Dani filters these positions for his analyses -> he tags it as "trimmed" in the name). We will apply the same coverage and missingness filters Dani applies to both VCFs, to filter out unwanted positions. To reduce computational times we filter to only keep the scaffolds we are interested in (see step above). We will divide these by the populations we are interested in (eastern (vl+ya+og+ka+to) and western (pv+cr+po+la+ki+ur) populations of Lynx lynx, and sierra morena population (sm) from Lynx pardinus). Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
 
 ```{r Preparing all the data, eval=FALSE, engine='bash'}
 
@@ -661,6 +662,71 @@ cat ~/home/PCAdmix_Carpathians/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/hom
 
 ```
 
+## Version with Kirov population as Admixed (for results comparison)
+
+```{r PCAdmix, eval=FALSE, engine='bash'}
+# extract kirov (ki) population vcf
+
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'ki' > $Admx_PATH/ki_list_to_remove.txt
+cat $Admx_PATH/ki_list_to_remove.txt
+
+cd $Admx_PATH
+screen -S KIpop.log
+script KIpop.log
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo ${scaffold}
+    rm $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz.tbi
+    bgzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf
+    tabix -p vcf $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    rm -r $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase
+    mkdir $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase
+    
+    $BCF view -Ov -S $Admx_PATH/ki_list_to_remove.txt $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz > $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase/ll_ki_${scaffold}.phased.vcf
+    gunzip $Admx_PATH/Phasing/ll_west_${scaffold}_Phase/ll_west_${scaffold}.phased.vcf.gz
+    
+    echo " DONE "
+
+done
+
+## convert to beagle
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo  " converting to beagle ${scaffold} in ki "
+    cat $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase/ll_ki_${scaffold}.phased.vcf | java -jar $VCF2BEA N $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase/ll_ki_${scaffold}.phased
+    gunzip $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase/ll_ki_${scaffold}.phased.bgl.gz
+    echo " DONE "
+done
+
+## run 20SNPs window PCAdmix
+
+screen -S ki_PCAdmix.log
+script ki_PCAdmix.log
+mkdir $Admx_PATH/PCAdmix_Kirov
+
+scaffolds=$(cat $Admx_PATH/lp23_scaffolds_tobephased_noerror)
+for scaffold in $scaffolds
+    do
+    echo " starting PCAdmix for ${scaffold} "
+    mkdir $Admx_PATH/PCAdmix_Kirov/PCAdmix_${scaffold}
+    
+    $PCAdmix -anc $Admx_PATH/Phasing/ll_east_${scaffold}_Phase/ll_east_${scaffold}.phased.bgl $Admx_PATH/Phasing/lp_sm_${scaffold}_Phase/lp_sm_${scaffold}.phased.bgl -adm $Admx_PATH/Phasing/ll_ki_${scaffold}_Phase/ll_ki_${scaffold}.phased.bgl -o $Admx_PATH/PCAdmix_Kirov/PCAdmix_${scaffold}/pcadmix_${scaffold} -lab LYNX PARDINUS Admixed -w 20
+    
+    echo " DONE "
+done
+
+cat $Admx_PATH/PCAdmix_Kirov/PCAdmix_lp23.s*/*vit.txt | less -S
+cat $Admx_PATH/PCAdmix_Kirov/PCAdmix_lp23.s*/*ia.txt | less -S
+
+cat ~/home/PCAdmix_Kirov/PCAdmix_lp23.s*/*vit.txt | cut -d' ' -f2- > ~/home/Kirov.txt
+
+```
+
 ## Version with CR+PV as the same Admixed population
 
 ```{r PCAdmix, eval=FALSE, engine='bash'}
@@ -1055,7 +1121,7 @@ echo " - Table 3 for $2 in $1 Generated! -"
 
 ```
 
-## Loop for CR Table of results generation
+## Loop for CR and KI Table of results generation
 
 This loop can be run to extract the tables of all individuals in Particular Population (in this case CR)
 
@@ -1071,5 +1137,37 @@ for i in $crIDs
   do
     ./PCAdmix_TableMaker.sh PCAdmix_Carpathians $i
 done
+
+# Loop for all KI individuals in Kirov results directory (20SNPs analysis)
+
+kiIDs=$(cat $Admx_PATH/ki_list_to_remove.txt)
+
+for i in $kiIDs
+  do
+    ./PCAdmix_TableMaker.sh PCAdmix_Kirov $i
+done
+
+```
+
+# 5. Table of Introgressed regions
+Get table (from a VCF) with Information regarding the introgressed regions (similar to what done for Pelage and Epilepsy). Intersect a BED file with the introgressed regions coordinates with the VCF, then extract the table from that VCF.
+
+## Generating BED file
+
+We need to generate the BED file with the coordinates of the introgressed segments. Table3 of the PCAdmix results has these coordinates. By cutting the "useful" columns we can generate a BED file. Then we can intersect it with the VCF file containing the individual of interest
+
+```{r Tables, eval=FALSE, engine='bash'}
+
+grep "lp23" h_ll_pv_0223_Table3.txt | cut -f2,6,7 | sort -u > h_ll_pv_0223_introgressed.bed
+grep "lp23" c_ll_cr_0205_Table3.txt | cut -f2,6,7 | sort -u > c_ll_cr_0205_introgressed.bed
+
+bedtools intersect -header -a $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf -b h_ll_pv_0223_introgressed.bed > h_ll_pv_0223_introgressed.vcf
+bedtools intersect -header -a $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf -b c_ll_cr_0205_introgressed.bed > c_ll_cr_0205_introgressed.vcf
+
+grep "CDS" h_ll_pv_0223_introgressed.vcf | cut -d'|' -f4 > h_ll_pv_0223_introgressed.genelist
+grep "CDS" c_ll_cr_0205_introgressed.vcf | cut -d'|' -f4 > c_ll_cr_0205_introgressed.genelist
+
+grep -f h_ll_pv_0223_introgressed.genelist ~/Data_b/LYPA23C.all.fix.gff3 > h_ll_pv_0223_introgressed.genelist.gff3
+grep -f c_ll_cr_0205_introgressed.genelist ~/Data_b/LYPA23C.all.fix.gff3 > c_ll_cr_0205_introgressed.genelist.gff3
 
 ```
