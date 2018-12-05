@@ -1,0 +1,255 @@
+---
+title: "Data_Preparation"
+author: "Enrico"
+date: "5 December 2018"
+output: html_document
+---
+
+# 0. Path Definition
+
+Define the paths to different locations for easier calling during script
+
+```{r Define paths, eval=FALSE, engine='bash'}
+
+ssh -X ebazzicalupo@genomics-b.ebd.csic.es # these analyses will be conducted in server B because the annotated VCF file is located there
+
+Admx_PATH=/home/ebazzicalupo/Admixture # path to the project directory
+Data_PATH=/home/ebazzicalupo/Data # path to data directory
+ShapeIt=/home/ebazzicalupo/Admixture/ShapeIt/shapeit # path to ShapeIt software
+Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23 # path to scaffold length file
+SexChr_PATH=/home/GRUPOS/grupolince/sexual_chr # path to directory with lists of scaffolds with XY chromosomes represented
+BCF=/opt/bcftools-1.6/bcftools # path to BCFtools software
+REF=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/lp23.fa # path to reference genome
+GATK=/opt/GATK-3.7/GenomeAnalysisTK.jar # GATK software path
+VCF2BEA=/home/ebazzicalupo/Admixture/VCF2Beagle/vcf2beagle.jar # vcf2beagle software path
+PCAdmix=/home/ebazzicalupo/Admixture/PCAdmix/PCAdmix3_linux # PCAdmix software path
+
+```
+
+# 1. Preparing all the data
+
+## Selection of scaffolds to include in the analysis - REMEMBER to remove XY
+
+PCAdmix runs on single chromosomes. Having scaffolds of various length, we decided to include only the bigger scaffolds with enough information to be relevant in the analysis. We decided on 1Mbp as the lower limit for the scaffold length. We decided not to include scaffolds that might contain parts of the sexual chromosomes, which might interefere with the analysis. For this reason we removed all of the scaffolds which are annotated for any part of their length to sexual chromosomes.
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+# check which ones have more than 1Mbp
+Lenght_PATH=/home/GRUPOS/grupolince/reference_genomes/lynx_pardinus_genome/Length_scaffolds_lp23
+sort -nk2,2 $Lenght_PATH | tail -673 | sort -k1 > $Admx_PATH/lp23_scaffolds_longerthan1Mbp  # 673 have more than 1Mbp
+
+# no XY chromosome
+cut -f1 $SexChr_PATH/females_males_normalized_ratio.coverage.contig.filteredX.percontig.Xchr-above30.0based.bed | sort -u > $Admx_PATH/lp23_scaffolds_Xchromosome
+
+cut -f1 $SexChr_PATH/females_males_normalized_ratio.coverage.contig.filteredY.lax.percontig.Ychr-above30.0based.bed | sort -u > $Admx_PATH/lp23_scaffolds_Ychromosome
+
+cat $Admx_PATH/lp23_scaffolds_Xchromosome $Admx_PATH/lp23_scaffolds_Ychromosome | sort -u > $Admx_PATH/lp23_scaffolds_sexchromosome
+
+# remove sexchromosome scaffolds from list of scaffolds longer than 1Mbp
+grep -v -f $Admx_PATH/lp23_scaffolds_sexchromosome $Admx_PATH/lp23_scaffolds_longerthan1Mbp | cut -d ' ' -f1 > $Admx_PATH/lp23_scaffolds_tobephased
+
+```
+
+## Get VCF containing all common positions between Lynx lynx and Lynx pardinus (to keep all of the available information) and filter for coverage and missingness
+
+We start with two VCF created by Dani, which are separated by species, but all of the positions which are fixed for the ancestral allel in one species and not in the other are not filtered out yet (Dani filters these positions for his analyses -> he tags it as "trimmed" in the name). We will apply the same coverage and missingness filters Dani applies to both VCFs, to filter out unwanted positions. To reduce computational times we filter to only keep the scaffolds we are interested in (see step above). We will divide these by the populations we are interested in (eastern (vl+ya+og+ka+to) and western (pv+cr+po+la+ki+ur) populations of Lynx lynx, and sierra morena population (sm) from Lynx pardinus). Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+# Copy the untrimmed VCF files of Lynx lynx (ll_perspecies.lr_ann.vcf) and of Lynx pardinus (lp_perspecies.lr_ann.vcf) from Dani's database (/home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/) to the data folder.
+
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/ll_perspecies.lr_ann.vcf $Data_PATH
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/annotation/lp_perspecies.lr_ann.vcf $Data_PATH
+
+grep -v '#' $Data_PATH/ll_perspecies.lr_ann.vcf | wc -l #5063416
+grep -v '#' $Data_PATH/lp_perspecies.lr_ann.vcf | wc -l #5063416
+
+# Copy the depth calculations from Dani's database
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/c_lp_do-c_lp_sm_n031_mean_sd_depthGlobal_lynx_per_pop_mean_folds_0.95.csv $Data_PATH
+scp /home/GRUPOS/grupolince/lynx_genomes_5x/VCFs_Dani/c_ll_no-c_ll_ba-h_ll_ba-c_ll_cr-c_ll_po-c_ll_la-c_ll_ki-c_ll_ur-c_ll_tu-c_ll_to-c_ll_ka-c_ll_og-c_ll_ya-c_ll_vl_n080_mean_sd_depthGlobal_lynx_per_pop_mean_folds_0.95.csv $Data_PATH
+
+##Apply low and high DP and 0.325 missingness filters.
+#First, for each species exclude those positions that have more than 32.5% missing genotypes (i.e. missing at least in all individuals within the 5x dataset, or within the smaller 25x dataset), as well as those that have lower (higher) depth than the minimum (maximum) within 0.95 of the distribution, as calculated above:
+
+cd $Admx_PATH
+screen -S perspeciesfilter.log
+script perspeciesfilter.log
+
+cd $Data_PATH
+declare SPECIES=$(ls *_perspecies.lr_ann.vcf | cut -c1-2 | uniq)
+for i in ${SPECIES[@]}
+  do
+  echo "${i}"
+  MIN_DP=$(cat $Data_PATH/c_"${i}"*.csv | awk '{print $9}') #Obtained by Dani
+  MAX_DP=$(cat $Data_PATH/c_"${i}"*.csv | awk '{print $8}') #Obtained by Dani
+  echo $MIN_DP
+  echo $MAX_DP
+  $BCF filter -e "DP < ${MIN_DP} || DP > ${MAX_DP} || F_MISSING > 0.325" -Ov -o $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf $Data_PATH/"${i}"_perspecies.lr_ann.vcf
+done
+  
+grep -v '#' $Data_PATH/lp_perspecies_filtered2.lr_ann.vcf | wc -l #4878018
+grep -v '#' $Data_PATH/ll_perspecies_filtered2.lr_ann.vcf | wc -l #5010540
+
+```
+
+## Filter to be left only with "useful" scaffolds
+
+Filter the VCFs to include only the previously selected scaffolds (longer than 1Mbp and not including X or Y annotations)
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+cd $Data_PATH
+declare SPECIES=$(ls *_perspecies.lr_ann.vcf | cut -c1-2 | uniq)
+for i in ${SPECIES[@]}
+  do
+  grep '#' $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf > "${i}"_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf && grep -v '#' $Data_PATH/"${i}"_perspecies_filtered2.lr_ann.vcf | grep -f $Admx_PATH/lp23_scaffolds_tobephased >> "${i}"_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf
+done
+
+grep -v '#' $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
+grep -v '#' $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
+
+```
+
+We will divide these VCFs by the populations we are interested in (eastern (vl+ya+og+ka+to) and western (pv+cr+po+la+ki+ur) populations of Lynx lynx, and sierra morena population (sm) from Lynx pardinus). These partitions were decided based on the PCA which separates largely between eastern and western populations of Lynx lynx. Some populations were not included in the groups because of characteristics which are not optimal for the analysis (Norway is more separated from the Carpathians than the rest, Balkans samples are not perfectly "clean", Tuva shows signs of admixture)
+Once we have these VCFs, we will intersect them in order to keep only the common positions between the three. We can then go to the next step which is PHASING.
+
+## Get Hybrid individual (pv = pais vasco) and WESTERN L.lynx populations' (cr = carpathians, po = poland, la = latvia, ki = kirov, ur = urali) VCF to phase
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+## GATK to separate pv and cr individuals
+
+cd $Admx_PATH
+rm llwest_list_to_remove.txt
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'pv\|cr\|po\|la\|ki\|ur' > $Admx_PATH/llwest_list_to_remove.txt
+cat $Admx_PATH/llwest_list_to_remove.txt
+
+# GATK
+screen -S GATKpartitionWEST.log
+script GATKpartitionWEST.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/llwest_list_to_remove.txt
+
+rm $Admx_PATH/llwest_list_to_remove.txt
+
+grep -v "#" $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
+
+```
+
+## Get EASTERN Lynx lynx population (vl = vladivostok, ya = yakutia, og+ka+to = mongolia) VCF to phase
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+## GATK to separate vl individuals from lynx lynx perspecies vcf
+
+cd $Admx_PATH
+rm lleast_list_to_remove.txt
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'vl\|ya\|og\|ka\|to' > $Admx_PATH/lleast_list_to_remove.txt
+cat $Admx_PATH/lleast_list_to_remove.txt
+
+# GATK
+screen -S GATKpartitionEAST.log
+script GATKpartitionEAST.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/ll_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/lleast_list_to_remove.txt
+
+rm $Admx_PATH/lleast_list_to_remove.txt
+
+grep -v "#" $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2786031
+
+```
+
+## Get Sierra Morena VCF to phase
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+## GATK to separate sm individuals from lynx lynx perspecies vcf
+
+cd $Admx_PATH
+rm sm_list_to_remove.txt
+
+# define which individuals to extract
+$BCF query -l $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | grep 'sm' > $Admx_PATH/sm_list_to_remove.txt
+cat $Admx_PATH/sm_list_to_remove.txt
+
+# GATK
+screen -S GATKpartitionSM.log
+script GATKpartitionSM.log
+
+java -XX:MaxMetaspaceSize=1g -XX:+UseG1GC -XX:+UseStringDeduplication -Xms16g -Xmx32g -jar $GATK \
+    -T SelectVariants \
+    -R $REF \
+    -V $Data_PATH/lp_perspecies_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    -o $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf \
+    --sample_file $Admx_PATH/sm_list_to_remove.txt
+
+rm $Admx_PATH/sm_list_to_remove.txt
+
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf | wc -l #2759315
+
+```
+
+## Intersect the three VCFs
+
+To have each VCF with only the positions which are common for the three. Both BCFtools and BEDtools have been tried. Since same species have same positions we can simply intersect with BEDtools (easier) the files 2 by 2 comparing sm with one of the two ll populations and the two ll populations with sm.
+
+```{r Preparing all the data, eval=FALSE, engine='bash'}
+
+cd $Data_PATH
+# index bgziped VCFs
+$BCF index lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+$BCF index ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+$BCF index ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+## intersect with BCFtools results in separate folder
+$BCF isec -p $Data_PATH/intersect -n=3 lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+#This file was produced by vcfisec.
+#The command line was:   bcftools isec  -p /home/ebazzicalupo/Data/intersect -n=3 lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_vl_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz ll_pv.cr_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+#Using the following file names:
+# /home/ebazzicalupo/Data/intersect/0000.vcf      for stripped    lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+# /home/ebazzicalupo/Data/intersect/0001.vcf      for stripped    ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+# /home/ebazzicalupo/Data/intersect/0002.vcf      for stripped    ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf.gz
+
+# move results to Datapath
+cd $Data_PATH/intersect
+mv 0000.vcf $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+mv 0001.vcf $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+mv 0002.vcf $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf
+
+# check number of SNPs
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersect.lr_ann.vcf | wc -l #2752014
+
+## Intersect with BEDtools - Used BEDtools in the end
+# sm population
+bedtools intersect -header -a $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# east population
+bedtools intersect -header -a $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# west population
+bedtools intersect -header -a $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf -b $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds.lr_ann.vcf > $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf
+
+# check number of SNPs
+grep -v "#" $Data_PATH/lp_sm_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_east_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+grep -v "#" $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf | wc -l #2752014
+
+```

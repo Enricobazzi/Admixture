@@ -1161,6 +1161,7 @@ We need to generate the BED file with the coordinates of the introgressed segmen
 grep "lp23" h_ll_pv_0223_Table3.txt | cut -f2,6,7 | sort -u > h_ll_pv_0223_introgressed.bed
 grep "lp23" c_ll_cr_0205_Table3.txt | cut -f2,6,7 | sort -u > c_ll_cr_0205_introgressed.bed
 
+# this step should be done with a different VCF -> one with only the variants exclusive to the population
 bedtools intersect -header -a $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf -b h_ll_pv_0223_introgressed.bed > h_ll_pv_0223_introgressed.vcf
 bedtools intersect -header -a $Data_PATH/ll_west_perpop_filtered2_1mbpnoxyscaffolds_intersected.lr_ann.vcf -b c_ll_cr_0205_introgressed.bed > c_ll_cr_0205_introgressed.vcf
 
